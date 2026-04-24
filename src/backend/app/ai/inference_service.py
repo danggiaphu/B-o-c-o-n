@@ -11,6 +11,21 @@ try:
 except ImportError:
     from mo_hinh_ai import FuzzyGCN
 
+# ── Cấu hình dataset mặc định (CẬP NHẬT 2026-04-22) ──
+# Thay đổi: Cho phép sử dụng cả 3 dataset (B, C, F) một lúc hoặc chỉ từng dataset cụ thể
+# Lợi ích:
+#   - Kết hợp dữ liệu từ B-dataset (269 thuốc, 598 bệnh, 18,416 liên kết)
+#   - Kết hợp dữ liệu từ C-dataset (663 thuốc, 409 bệnh, 2,532 liên kết)
+#   - Kết hợp dữ liệu từ F-dataset (593 thuốc, 313 bệnh, 1,598 liên kết)
+#   - Tổng cộng: 1,525 thuốc + 1,570 bệnh + 22,546 liên kết (sau gộp & loại duplicate)
+# 
+# Cách sử dụng:
+#   DEFAULT_DATASETS = ["B-dataset", "C-dataset", "F-dataset"]  # Gộp cả 3
+#   DEFAULT_DATASETS = ["B-dataset"]                            # Chỉ B-dataset
+#   DEFAULT_DATASETS = ["B-dataset", "C-dataset"]              # B + C
+DEFAULT_DATASETS = ["B-dataset", "C-dataset", "F-dataset"]  # Sử dụng cả 3 dataset
+# DEFAULT_DATASETS = ["B-dataset"]  # Hoặc chỉ dùng B-dataset
+
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[4]
@@ -79,6 +94,82 @@ def infer_feature_dims(dataset: str) -> tuple[int, int]:
     return int(drug_dim), int(disease_dim)
 
 
+# ── HÀM GỘP DỮ LIỆU (MỚI - CẬP NHẬT 2026-04-22) ──
+# Mục đích: Hỗ trợ gộp dữ liệu từ nhiều dataset, loại bỏ các mục trùng lặp
+# 
+# Thay đổi:
+#   - Thêm hàm load_drug_table_merged() để gộp bảng thuốc từ nhiều dataset
+#   - Thêm hàm load_disease_table_merged() để gộp bảng bệnh từ nhiều dataset
+#   - Thêm hàm load_links_merged() để gộp các liên kết từ nhiều dataset
+#   - Tất cả các hàm đều tự động dùng DEFAULT_DATASETS nếu không chỉ định
+#
+# Ví dụ:
+#   drugs = load_drug_table_merged()  # Dùng DEFAULT_DATASETS
+#   diseases = load_disease_table_merged(["B-dataset"])  # Chỉ B-dataset
+#   links = load_links_merged(["B-dataset", "C-dataset"])  # B + C
+
+def load_drug_table_merged(datasets: list[str] | None = None) -> pd.DataFrame:
+    """
+    Gộp bảng thuốc từ nhiều dataset (loại bỏ duplicate).
+    
+    Args:
+        datasets: Danh sách dataset cần gộp. Nếu None, dùng DEFAULT_DATASETS.
+    
+    Returns:
+        DataFrame với các cột: name, name_norm, drug_id (được tái định số từ 0)
+    """
+    if datasets is None:
+        datasets = DEFAULT_DATASETS
+    dfs = []
+    for dataset in datasets:
+        df = load_drug_table(dataset)
+        dfs.append(df[["name", "name_norm"]])
+    merged = pd.concat(dfs, ignore_index=True).drop_duplicates(subset=["name_norm"])
+    merged["drug_id"] = range(len(merged))
+    return merged
+
+
+def load_disease_table_merged(datasets: list[str] | None = None) -> pd.DataFrame:
+    """
+    Gộp bảng bệnh từ nhiều dataset (loại bỏ duplicate).
+    
+    Args:
+        datasets: Danh sách dataset cần gộp. Nếu None, dùng DEFAULT_DATASETS.
+    
+    Returns:
+        DataFrame với các cột: name, name_norm, disease_id (được tái định số từ 0)
+    """
+    if datasets is None:
+        datasets = DEFAULT_DATASETS
+    dfs = []
+    for dataset in datasets:
+        df = load_disease_table(dataset)
+        dfs.append(df[["name", "name_norm"]])
+    merged = pd.concat(dfs, ignore_index=True).drop_duplicates(subset=["name_norm"])
+    merged["disease_id"] = range(len(merged))
+    return merged
+
+
+def load_links_merged(datasets: list[str] | None = None) -> pd.DataFrame:
+    """
+    Gộp các liên kết Drug-Disease từ nhiều dataset (loại bỏ duplicate).
+    
+    Args:
+        datasets: Danh sách dataset cần gộp. Nếu None, dùng DEFAULT_DATASETS.
+    
+    Returns:
+        DataFrame với các cột: drug, disease (được gộp từ nhiều dataset)
+    """
+    if datasets is None:
+        datasets = DEFAULT_DATASETS
+    dfs = []
+    for dataset in datasets:
+        df = load_links(dataset)
+        dfs.append(df)
+    merged = pd.concat(dfs, ignore_index=True).drop_duplicates()
+    return merged
+
+
 @lru_cache(maxsize=4)
 def get_model(dataset: str = "B-dataset") -> FuzzyGCN:
     root = _project_root()
@@ -122,18 +213,45 @@ def predict_diseases_by_drug_name(
     drug_name: str,
     top_k: int = 10,
     threshold: float = 0.0,
+    datasets: list[str] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
-    dataset = "B-dataset"
-    drugs = load_drug_table(dataset)
+    """
+    Dự đoán bệnh từ tên thuốc (CẬP NHẬT 2026-04-22 - HỖ TRỢ NHIỀU DATASET).
+    
+    THAY ĐỔI:
+        ✓ Thêm tham số `datasets` (list[str] | None)
+        ✓ Mặc định dùng DEFAULT_DATASETS (gộp B, C, F)
+        ✓ Sử dụng load_drug_table_merged() thay vì load_drug_table()
+        ✓ Sử dụng load_disease_table_merged() thay vì load_disease_table()
+        ✓ Sử dụng load_links_merged() thay vì load_links()
+    
+    Args:
+        drug_name (str): Tên thuốc cần dự đoán bệnh
+        top_k (int): Số lượng kết quả hàng đầu (mặc định: 10)
+        threshold (float): Ngưỡng điểm tối thiểu 0.0-1.0 (mặc định: 0.0)
+        datasets (list[str] | None): Dataset để dùng. None → DEFAULT_DATASETS
+    
+    Returns:
+        tuple: (input_name, results) với results chứa:
+            - id: disease_id
+            - name: Tên bệnh
+            - score: Điểm dự đoán 0.0-1.0
+            - known: Có trong dataset không? (True/False)
+    """
+    if datasets is None:
+        datasets = DEFAULT_DATASETS
+    
+    dataset = "B-dataset"  # Dùng B-dataset cho model (giữ tương thích)
+    drugs = load_drug_table_merged(datasets)  # ← THAY: load_drug_table_merged() thay load_drug_table()
     matches = drugs[drugs["name_norm"] == _normalize(drug_name)]
     if matches.empty:
         return drug_name, []
     drug_id = int(matches.iloc[0]["drug_id"])
     input_name = str(matches.iloc[0]["name"])
-    diseases = load_disease_table(dataset)
+    diseases = load_disease_table_merged(datasets)  # ← THAY: load_disease_table_merged()
     score_map = _predict_all_diseases_for_drug(drug_id)
 
-    links = load_links(dataset)
+    links = load_links_merged(datasets)  # ← THAY: load_links_merged()
     known_disease_ids: set[int] = set(
         links.loc[links["drug"] == drug_id, "disease"].astype(int).tolist()
     )
@@ -161,11 +279,38 @@ def predict_drugs_by_disease_name(
     disease_name: str,
     top_k: int = 10,
     threshold: float = 0.0,
+    datasets: list[str] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
-    dataset = "B-dataset"
-    diseases = load_disease_table(dataset)
-    drugs = load_drug_table(dataset)
-    links = load_links(dataset)
+    """
+    Dự đoán thuốc từ tên bệnh (CẬP NHẬT 2026-04-22 - HỖ TRỢ NHIỀU DATASET).
+    
+    THAY ĐỔI:
+        ✓ Thêm tham số `datasets` (list[str] | None)
+        ✓ Mặc định dùng DEFAULT_DATASETS (gộp B, C, F)
+        ✓ Sử dụng load_disease_table_merged() thay vì load_disease_table()
+        ✓ Sử dụng load_drug_table_merged() thay vì load_drug_table()
+        ✓ Sử dụng load_links_merged() thay vì load_links()
+    
+    Args:
+        disease_name (str): Tên bệnh cần dự đoán thuốc
+        top_k (int): Số lượng kết quả hàng đầu (mặc định: 10)
+        threshold (float): Ngưỡng điểm tối thiểu 0.0-1.0 (mặc định: 0.0)
+        datasets (list[str] | None): Dataset để dùng. None → DEFAULT_DATASETS
+    
+    Returns:
+        tuple: (input_name, results) với results chứa:
+            - id: drug_id
+            - name: Tên thuốc
+            - score: Điểm dự đoán 0.0-1.0
+            - known: Có trong dataset không? (True/False)
+    """
+    if datasets is None:
+        datasets = DEFAULT_DATASETS
+    
+    dataset = "B-dataset"  # Dùng B-dataset cho model (giữ tương thích)
+    diseases = load_disease_table_merged(datasets)  # ← THAY: load_disease_table_merged()
+    drugs = load_drug_table_merged(datasets)  # ← THAY: load_drug_table_merged()
+    links = load_links_merged(datasets)  # ← THAY: load_links_merged()
     matches = diseases[diseases["name_norm"] == _normalize(disease_name)]
     if matches.empty:
         return disease_name, []

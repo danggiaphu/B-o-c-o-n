@@ -10,6 +10,12 @@ def apply_theme() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
+    # Ghi chu ve cac nhom nut trong CSS ben duoi:
+    # - `.stButton > button`: dung cho cac nut bam thuong tren giao dien
+    #   nhu "Kiểm tra API", "Đăng xuất", "Tải lại", "Dự đoán tất cả",
+    #   "Tải danh sách thuốc", "Tải danh sách bệnh", "Tải danh sách liên kết", "Tải logs".
+    # - `.stFormSubmitButton > button`: dung cho cac nut gui form
+    #   nhu "Đăng nhập", "Dự đoán", "Tra cứu", "Lưu thuốc", "Lưu bệnh", "Thêm liên kết".
     st.markdown(
         """
         <style>
@@ -146,12 +152,30 @@ def apply_theme() -> None:
         .stSelectbox label,
         .stSlider label,
         .stNumberInput label,
+        .stRadio label,
         .stMultiSelect label,
         .stCheckbox label {
           color: #000000 !important;
         }
 
         /* ── Tabs ── */
+        .stNumberInput input {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+        }
+        .stNumberInput button {
+          color: #ffffff !important;
+        }
+        .stSlider span,
+        .stSlider p,
+        .stSlider small,
+        .stNumberInput span,
+        .stNumberInput p,
+        .stRadio span,
+        .stRadio p {
+          color: #000000 !important;
+        }
+
         .stTabs [data-baseweb="tab-list"] {
           gap: 0.3rem;
           background: transparent;
@@ -164,7 +188,7 @@ def apply_theme() -> None:
           border: 1px solid transparent !important;
           color: var(--muted) !important;
           font-weight: 600 !important;
-          font-size: 0.88rem !important;
+          font-size: 1rem !important;
           padding: 0.45rem 1rem !important;
         }
         .stTabs [aria-selected="true"] {
@@ -175,6 +199,13 @@ def apply_theme() -> None:
         }
 
         /* ── Metric cards ── */
+        div[data-testid="stHeading"] h1,
+        div[data-testid="stHeading"] h2,
+        div[data-testid="stHeading"] h3,
+        div[data-testid="stHeading"] h4 {
+          color: #000000 !important;
+        }
+
         [data-testid="stMetric"] {
           background: var(--surface);
           border: 1px solid var(--border);

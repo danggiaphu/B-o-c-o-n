@@ -34,6 +34,7 @@ from ..security import AuthUser, create_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api", tags=["api"])
 TOKENS: dict[str, AuthUser] = {}
+AUTH_DISABLED_DEFAULT_USER = AuthUser(id=0, username="guest", role="admin")
 
 
 def bootstrap_data(db: Session) -> None:
@@ -171,12 +172,14 @@ def bootstrap_data(db: Session) -> None:
 
 
 def _auth_from_header(authorization: str | None) -> AuthUser:
+    # Tam thoi vo hieu hoa dang nhap: neu khong co token hoac token khong hop le
+    # thi van cho phep truy cap bang tai khoan mac dinh.
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Thieu token")
+        return AUTH_DISABLED_DEFAULT_USER
     token = authorization.split(" ", 1)[1].strip()
     user = TOKENS.get(token)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khong hop le")
+        return AUTH_DISABLED_DEFAULT_USER
     return user
 
 
@@ -220,19 +223,20 @@ def predict_drug_to_disease(
         top_k=payload.top_k,
         threshold=payload.threshold,
     )
-    for item in preds:
-        db.add(
-            PredictionHistory(
-                user_id=user.id,
-                direction="drug_to_disease",
-                input_name=input_name,
-                target_id=item["id"],
-                target_name=item["name"],
-                score=float(item["score"]),
-                known=bool(item.get("known", False)),
+    if user.id > 0:
+        for item in preds:
+            db.add(
+                PredictionHistory(
+                    user_id=user.id,
+                    direction="drug_to_disease",
+                    input_name=input_name,
+                    target_id=item["id"],
+                    target_name=item["name"],
+                    score=float(item["score"]),
+                    known=bool(item.get("known", False)),
+                )
             )
-        )
-    db.commit()
+        db.commit()
     return PredictResponse(
         direction="drug_to_disease",
         input_name=input_name,
@@ -251,19 +255,20 @@ def predict_disease_to_drug(
         top_k=payload.top_k,
         threshold=payload.threshold,
     )
-    for item in preds:
-        db.add(
-            PredictionHistory(
-                user_id=user.id,
-                direction="disease_to_drug",
-                input_name=input_name,
-                target_id=item["id"],
-                target_name=item["name"],
-                score=float(item["score"]),
-                known=bool(item.get("known", False)),
+    if user.id > 0:
+        for item in preds:
+            db.add(
+                PredictionHistory(
+                    user_id=user.id,
+                    direction="disease_to_drug",
+                    input_name=input_name,
+                    target_id=item["id"],
+                    target_name=item["name"],
+                    score=float(item["score"]),
+                    known=bool(item.get("known", False)),
+                )
             )
-        )
-    db.commit()
+        db.commit()
     return PredictResponse(
         direction="disease_to_drug",
         input_name=input_name,
@@ -273,6 +278,8 @@ def predict_disease_to_drug(
 
 @router.get("/history", response_model=list[HistoryItem])
 def history(user: Annotated[AuthUser, Depends(get_current_user)], db: Session = Depends(get_db)) -> list[HistoryItem]:
+    if user.id <= 0:
+        return []
     rows = (
         db.query(PredictionHistory)
         .filter(PredictionHistory.user_id == user.id)

@@ -13,6 +13,9 @@ import numpy as np  # Thu vien tinh toan ma tran.
 import pandas as pd  # Thu vien doc file CSV.
 import torch  # Thu vien PyTorch.
 import torch.nn.functional as F  # Thu vien ham mat mat va kich hoat.
+import torch.optim  # 🔧 FIX: Import torch.optim (cho ReduceLROnPlateau)
+import torch.optim.lr_scheduler  # 🔧 FIX: Import scheduler chi tiet
+from torch.amp.grad_scaler import GradScaler  # 🔧 FIX: Import GradScaler (dung trong dung: torch.amp.GradScaler(...))
 from sklearn.model_selection import StratifiedKFold  # Thu vien chia K-Fold co can bang nhan.
 from sklearn.preprocessing import StandardScaler  # Thu vien chuan hoa dac trung.
 from torch_geometric.data import HeteroData  # Thu vien du lieu do thi.
@@ -31,7 +34,7 @@ class CauHinh:
     # Thu muc goc cua du an.
     thu_muc_goc: str = str(Path(__file__).resolve().parents[4])
     # Ten dataset se dung (vi du: B-dataset).
-    ten_dataset: str = "B-dataset"
+    ten_dataset: str = "F-dataset"
     # Duong dan cac file chinh.
     tep_thuoc: str = "DrugFingerprint.csv"
     tep_benh: str = "DiseaseFeature.csv"
@@ -296,12 +299,15 @@ def huan_luyen_1_fold(
         mode="max",
         factor=cau_hinh.factor_lr,
         patience=cau_hinh.patience_lr,
-        min_lr=cau_hinh.min_lr,
-        verbose=False,
+        min_lr=cau_hinh.min_lr
+        # verbose=False,  # 🔧 FIX: Đổi verbose=False (loại bỏ tham số không hợp lệ)
     )
 
     # Tao scaler cho AMP.
-    scaler = torch.amp.GradScaler("cuda", enabled=bat_amp)
+    # scaler = torch.amp.GradScaler("cuda", enabled=bat_amp)
+    scaler = torch.cuda.amp.GradScaler(enabled=bat_amp)
+
+    
 
     # Luu AUC tot nhat.
     best_auc = -1.0
@@ -423,7 +429,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     # Doc tham so.
+    #args = parse_args()
     args = parse_args()
+    print(f"So fold: {args.k_fold}")
 
     # Tao cau hinh tu tham so.
     cau_hinh = CauHinh(
@@ -448,7 +456,7 @@ def main() -> None:
 
     # Chuan bi duong dan.
     thu_muc_goc = Path(cau_hinh.thu_muc_goc)
-    duong_dataset = thu_muc_goc / "src" / "data" / cau_hinh.ten_dataset
+    duong_dataset = thu_muc_goc / "dataset" / cau_hinh.ten_dataset
     thu_muc_trong_so = Path(cau_hinh.thu_muc_trong_so)
     thu_muc_trong_so.mkdir(parents=True, exist_ok=True)
 
@@ -497,21 +505,47 @@ def main() -> None:
 
     # Luu chi so trung binh.
     danh_sach_chi_so: List[Dict[str, float]] = []
+    
+    import shutil
+
+    # Xoa toan bo folder fold cu de tranh nham lan
+    thu_muc_fold_goc = duong_dataset / "fold"
+    if thu_muc_fold_goc.exists():
+        shutil.rmtree(thu_muc_fold_goc)
+        print(f"Da xoa folder fold cu: {thu_muc_fold_goc}")
+        
 
     # Bat dau K-Fold.
-    for fold_id, (train_idx, test_idx) in enumerate(skf.split(canh_tat_ca, nhan_tat_ca), start=1):
-        print(f"\n=== Fold {fold_id}/{cau_hinh.so_fold} ===")
+    for fold_id, (train_idx, test_idx) in enumerate(skf.split(canh_tat_ca, nhan_tat_ca), start=0):
+        print(f"\n=== Fold {fold_id + 1}/{cau_hinh.so_fold} ===")
 
-        # Tao tap train/test.
         canh_train = canh_tat_ca[train_idx]
         nhan_train = nhan_tat_ca[train_idx]
         canh_test = canh_tat_ca[test_idx]
         nhan_test = nhan_tat_ca[test_idx]
 
-        # Tao do thi chi tu tap train duong (tranh ro ri thong tin).
+        # Luu data_train.csv va data_test.csv vao fold tuong ung (0-based)
+        thu_muc_fold = duong_dataset / "fold" / str(fold_id)
+        thu_muc_fold.mkdir(parents=True, exist_ok=True)
+
+        pd.DataFrame({
+            "drug": canh_train[:, 0],
+            "disease": canh_train[:, 1],
+            "label": nhan_train,
+        }).to_csv(thu_muc_fold / "data_train.csv", index=False)
+
+        pd.DataFrame({
+            "drug": canh_test[:, 0],
+            "disease": canh_test[:, 1],
+            "label": nhan_test,
+        }).to_csv(thu_muc_fold / "data_test.csv", index=False)
+
+        print(f"Da luu fold {fold_id} vao {thu_muc_fold}")
+
+        # Tao do thi chi tu tap train duong
         data_train = tao_do_thi(thuoc, benh, canh_train[nhan_train == 1])
 
-        # Huan luyen 1 fold.
+        # Huan luyen 1 fold
         chi_so = huan_luyen_1_fold(
             cau_hinh=cau_hinh,
             data_train=data_train,
@@ -522,7 +556,7 @@ def main() -> None:
             so_thuoc=so_thuoc,
             so_benh=so_benh,
             thu_muc_trong_so=thu_muc_trong_so,
-            fold_id=fold_id,
+            fold_id=fold_id + 1,
         )
 
         danh_sach_chi_so.append(chi_so)
@@ -538,7 +572,53 @@ def main() -> None:
         f"Accuracy={trung_binh['Accuracy']:.4f}, Precision={trung_binh['Precision']:.4f}, "
         f"Recall={trung_binh['Recall']:.4f}, F1={trung_binh['F1']:.4f}, MCC={trung_binh['MCC']:.4f}"
     )
+# Luu thong so lan chay vao file .txt
+    import datetime
+    thoi_gian = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    tep_thong_so = duong_dataset / f"ket_qua_{thoi_gian}.txt"
+    with open(tep_thong_so, "w", encoding="utf-8") as f:
+        f.write("=" * 50 + "\n")
+        f.write(f"THONG SO LAN CHAY: {thoi_gian}\n")
+        f.write("=" * 50 + "\n\n")
+        
+        f.write("[CAU HINH]\n")
+        f.write(f"Dataset        : {cau_hinh.ten_dataset}\n")
+        f.write(f"So fold        : {cau_hinh.so_fold}\n")
+        f.write(f"So epoch       : {cau_hinh.so_epoch}\n")
+        f.write(f"Toc do hoc     : {cau_hinh.toc_do_hoc}\n")
+        f.write(f"Weight decay   : {cau_hinh.weight_decay}\n")
+        f.write(f"Kich thuoc an  : {cau_hinh.kich_thuoc_an}\n")
+        f.write(f"Kich thuoc ra  : {cau_hinh.kich_thuoc_ra}\n")
+        f.write(f"Ti le am       : {cau_hinh.ti_le_am}\n")
+        f.write(f"Patience       : {cau_hinh.patience}\n")
+        f.write(f"Min delta      : {cau_hinh.min_delta}\n")
+        f.write(f"Factor LR      : {cau_hinh.factor_lr}\n")
+        f.write(f"Patience LR    : {cau_hinh.patience_lr}\n")
+        f.write(f"Min LR         : {cau_hinh.min_lr}\n")
+        f.write(f"Clip grad      : {cau_hinh.clip_grad}\n")
+        f.write(f"Pos weight     : {cau_hinh.pos_weight_duong}\n")
+        f.write(f"Thiet bi       : {cau_hinh.thiet_bi}\n")
+        f.write(f"Bat AMP        : {cau_hinh.bat_amp}\n")
+        f.write(f"Seed           : {cau_hinh.seed}\n\n")
+        
+        f.write("[KET QUA TUNG FOLD]\n")
+        for i, cs in enumerate(danh_sach_chi_so):
+            f.write(f"Fold {i:2d} | AUC={cs['AUC']:.4f} | AUPR={cs['AUPR']:.4f} | "
+                    f"Acc={cs['Accuracy']:.4f} | Prec={cs['Precision']:.4f} | "
+                    f"Rec={cs['Recall']:.4f} | F1={cs['F1']:.4f} | MCC={cs['MCC']:.4f}\n")
+        
+        f.write("\n[KET QUA TRUNG BINH]\n")
+        f.write(f"AUC       : {trung_binh['AUC']:.4f}\n")
+        f.write(f"AUPR      : {trung_binh['AUPR']:.4f}\n")
+        f.write(f"Accuracy  : {trung_binh['Accuracy']:.4f}\n")
+        f.write(f"Precision : {trung_binh['Precision']:.4f}\n")
+        f.write(f"Recall    : {trung_binh['Recall']:.4f}\n")
+        f.write(f"F1        : {trung_binh['F1']:.4f}\n")
+        f.write(f"MCC       : {trung_binh['MCC']:.4f}\n")
 
+    print(f"Da luu thong so vao: {tep_thong_so}")
+    
     # Luu ket qua trung binh ra file json.
     tep_kq = thu_muc_trong_so / "kfold_metrics.json"
     tep_kq.write_text(json.dumps(trung_binh, indent=2), encoding="utf-8")
