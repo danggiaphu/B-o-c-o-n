@@ -24,9 +24,6 @@ from frontend.app.ui.theme import apply_theme, render_hero  # noqa: E402
 
 def main() -> None:
     apply_theme()
-    st.session_state.setdefault("token", "auth-disabled")
-    st.session_state.setdefault("username", "guest")
-    st.session_state.setdefault("role", "admin")
 
     # ── Sidebar ────────────────────────────────────────────────────────
     with st.sidebar:
@@ -82,8 +79,8 @@ def main() -> None:
                 clear_auth_state()
                 st.rerun()
         else:
-            menu = "🔬 Dự đoán"
-            role = current_role() or "admin"
+            menu = "__login__"
+            role = None
             st.markdown(
                 '<div class="info-box">Vui lòng đăng nhập để sử dụng hệ thống.</div>',
                 unsafe_allow_html=True,
@@ -102,9 +99,14 @@ def main() -> None:
     # ── Main content ───────────────────────────────────────────────────
     render_hero(role)
 
+    if menu == "__login__":
+        render_login(api_base_url)
+        return
+
     token = str(st.session_state.get("token", ""))
     if not token:
-        token = "auth-disabled"
+        render_login(api_base_url)
+        return
 
     if "Dự đoán" in menu:
         render_user_workspace(api_base_url, token)
@@ -119,3 +121,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

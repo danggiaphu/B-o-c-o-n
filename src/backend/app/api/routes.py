@@ -34,7 +34,6 @@ from ..security import AuthUser, create_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api", tags=["api"])
 TOKENS: dict[str, AuthUser] = {}
-AUTH_DISABLED_DEFAULT_USER = AuthUser(id=0, username="guest", role="admin")
 
 
 def bootstrap_data(db: Session) -> None:
@@ -172,14 +171,12 @@ def bootstrap_data(db: Session) -> None:
 
 
 def _auth_from_header(authorization: str | None) -> AuthUser:
-    # Tam thoi vo hieu hoa dang nhap: neu khong co token hoac token khong hop le
-    # thi van cho phep truy cap bang tai khoan mac dinh.
     if not authorization or not authorization.lower().startswith("bearer "):
-        return AUTH_DISABLED_DEFAULT_USER
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Thieu token")
     token = authorization.split(" ", 1)[1].strip()
     user = TOKENS.get(token)
     if not user:
-        return AUTH_DISABLED_DEFAULT_USER
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khong hop le")
     return user
 
 
