@@ -3,6 +3,14 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+# Màu dark mode dùng chung cho các metric card inline
+_METRIC_CARDS = [
+    # (key, label, bg, border, fg)
+    ("total",    "Tổng kết quả",          "#1a1d27", "#2d3148", "#e8eaf0"),
+    ("known",    "✅ Liên kết đã biết",   "#0d2e1f", "#166534", "#4ade80"),
+    ("pred",     "🔬 AI dự đoán mới",     "#172040", "#1e40af", "#93c5fd"),
+]
+
 
 def card_open(title: str, icon: str = "") -> None:
     icon_html = f"<span style='margin-right:0.35rem'>{icon}</span>" if icon else ""
@@ -16,238 +24,130 @@ def card_close() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def show_result_table(results: list[dict], entity_label: str = "Tên") -> None:
-    if not results:
-        st.markdown(
-            '<div class="info-box">Không có kết quả phù hợp với điều kiện hiện tại.</div>',
-            unsafe_allow_html=True,
-        )
-        return
-
-    known_count = sum(1 for r in results if r.get("known", False))
-    pred_count = len(results) - known_count
-
-    st.markdown(
-        f"""
-        <div style="display:flex;gap:0.8rem;margin-bottom:1rem">
-          <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:10px;
-                      padding:0.8rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-            <div style="font-size:0.73rem;font-weight:700;color:#64748b;
-                        text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem">
-              Tổng kết quả
-            </div>
-            <div style="font-size:1.8rem;font-weight:800;color:#1a202c;line-height:1">{len(results)}</div>
-          </div>
-          <div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
-                      padding:0.8rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-            <div style="font-size:0.73rem;font-weight:700;color:#15803d;
-                        text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem">
-              ✅ Liên kết đã biết
-            </div>
-            <div style="font-size:1.8rem;font-weight:800;color:#15803d;line-height:1">{known_count}</div>
-          </div>
-          <div style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
-                      padding:0.8rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-            <div style="font-size:0.73rem;font-weight:700;color:#1d4ed8;
-                        text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem">
-              🔬 AI dự đoán mới
-            </div>
-            <div style="font-size:1.8rem;font-weight:800;color:#1d4ed8;line-height:1">{pred_count}</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+def _metric_row(total: int, known: int, pred: int) -> str:
+    items = [
+        (total, "Tổng kết quả",        "#1a1d27", "#2d3148", "#e8eaf0"),
+        (known, "✅ Liên kết đã biết", "#0d2e1f", "#166534", "#4ade80"),
+        (pred,  "🔬 AI dự đoán mới",   "#172040", "#1e40af", "#93c5fd"),
+    ]
+    cols = "".join(
+        f"""<div style="flex:1;background:{bg};border:1px solid {bd};border-radius:10px;
+                  padding:0.75rem 1rem;min-width:0">
+              <div style="font-size:0.7rem;font-weight:700;color:{fg};opacity:0.7;
+                          text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{label}</div>
+              <div style="font-size:1.7rem;font-weight:800;color:{fg};line-height:1">{val}</div>
+            </div>"""
+        for val, label, bg, bd, fg in items
     )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    rows_html = ""
-    for i, r in enumerate(results, 1):
-        score = float(r.get("score", 0.0))
-        score_pct = score * 100
-        bar_w = max(2, int(score_pct))
-        is_known = bool(r.get("known", False))
-        badge = (
-            '<span class="badge-known">✅ Đã biết</span>'
-            if is_known
-            else '<span class="badge-pred">🔬 Dự đoán</span>'
-        )
-        rows_html += f"""
-        <tr>
-          <td style="color:#64748b;font-size:0.8rem">{i}</td>
-          <td><strong>{r.get("name", "")}</strong></td>
-          <td>{badge}</td>
-          <td>
-            <div class="score-bar-wrap">
-              <div class="score-bar-bg">
-                <div class="score-bar-fill" style="width:{bar_w}%"></div>
-              </div>
-              <span class="score-val">{score_pct:.2f}%</span>
-            </div>
-          </td>
-        </tr>"""
-
-    st.markdown(
-        f"""
-        <table class="result-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>{entity_label}</th>
-              <th>Trạng thái</th>
-              <th>Điểm dự đoán</th>
-            </tr>
-          </thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if known_count > 0:
-        st.markdown(
-            '<div class="info-box" style="margin-top:0.8rem">'
-            f'<strong>✅ {known_count} kết quả</strong> có trong dữ liệu huấn luyện (liên kết đã được xác nhận). '
-            f'<strong>🔬 {pred_count} kết quả</strong> là dự đoán mới từ AI.'
-            "</div>",
-            unsafe_allow_html=True,
-        )
+    return f'<div style="display:flex;gap:0.75rem;margin-bottom:1rem">{cols}</div>'
 
 
 def _render_group_table(group: list[dict], entity_label: str) -> None:
-    """Render một nhóm kết quả (điều trị hoặc cảnh báo) vào bảng HTML."""
     if not group:
-        st.info("Không tìm thấy kết quả thuộc nhóm này.")
+        st.markdown('<div class="info-box">Không tìm thấy kết quả thuộc nhóm này.</div>', unsafe_allow_html=True)
         return
 
     rows_html = ""
     for i, r in enumerate(group, 1):
-        score = float(r.get("score", 0.0))
-        score_pct = score * 100
+        score_pct = float(r.get("score", 0.0)) * 100
         bar_w = max(2, int(score_pct))
-        is_known = bool(r.get("known", False))
         badge = (
             '<span class="badge-known">✅ Đã biết</span>'
-            if is_known
+            if r.get("known")
             else '<span class="badge-pred">🔬 Dự đoán</span>'
         )
         rows_html += f"""
         <tr>
-          <td style="color:#64748b;font-size:0.8rem">{i}</td>
+          <td style="color:#7c829e;font-size:0.8rem">{i}</td>
           <td><strong>{r.get("name", "")}</strong></td>
           <td>{badge}</td>
           <td>
             <div class="score-bar-wrap">
-              <div class="score-bar-bg">
-                <div class="score-bar-fill" style="width:{bar_w}%"></div>
-              </div>
+              <div class="score-bar-bg"><div class="score-bar-fill" style="width:{bar_w}%"></div></div>
               <span class="score-val">{score_pct:.2f}%</span>
             </div>
           </td>
         </tr>"""
 
     st.markdown(
-        f"""
-        <table class="result-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>{entity_label}</th>
-              <th>Trạng thái</th>
-              <th>Điểm dự đoán</th>
-            </tr>
-          </thead>
+        f"""<table class="result-table">
+          <thead><tr><th>#</th><th>{entity_label}</th><th>Trạng thái</th><th>Điểm dự đoán</th></tr></thead>
           <tbody>{rows_html}</tbody>
-        </table>
-        """,
+        </table>""",
         unsafe_allow_html=True,
     )
+
+
+def show_result_table(results: list[dict], entity_label: str = "Tên") -> None:
+    if not results:
+        st.markdown('<div class="info-box">Không có kết quả phù hợp với điều kiện hiện tại.</div>', unsafe_allow_html=True)
+        return
+
+    known_count = sum(1 for r in results if r.get("known", False))
+    pred_count = len(results) - known_count
+    st.markdown(_metric_row(len(results), known_count, pred_count), unsafe_allow_html=True)
+    _render_group_table(results, entity_label)
+
+    if known_count > 0:
+        st.markdown(
+            f'<div class="info-box" style="margin-top:0.8rem">'
+            f'<strong>✅ {known_count} kết quả</strong> có trong dữ liệu huấn luyện. '
+            f'<strong>🔬 {pred_count} kết quả</strong> là dự đoán mới từ AI.</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def show_split_result_table(results: list[dict], entity_label: str = "Tên") -> None:
-    """
-    Hiển thị kết quả dự đoán dưới dạng 2 cột song song:
-    - Cột trái  (✅ Nhóm Điều Trị)  : known=True  — liên kết đã xác nhận trong dataset
-    - Cột phải (⚠️ Nguy Cơ / Cảnh Báo): known=False — AI dự đoán mới, chưa kiểm chứng
-    """
     if not results:
-        st.markdown(
-            '<div class="info-box">Không có kết quả phù hợp với điều kiện hiện tại.</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="info-box">Không có kết quả phù hợp với điều kiện hiện tại.</div>', unsafe_allow_html=True)
         return
 
-    # ── Phân loại ──────────────────────────────────────────────────────
     df_tri_benh = [r for r in results if r.get("known", False)]
     df_canh_bao = [r for r in results if not r.get("known", False)]
+    known_count, pred_count = len(df_tri_benh), len(df_canh_bao)
 
-    known_count = len(df_tri_benh)
-    pred_count = len(df_canh_bao)
-
-    # ── Metric row tổng quan ───────────────────────────────────────────
-    st.markdown(
-        f"""
-        <div style="display:flex;gap:0.8rem;margin-bottom:1rem">
-          <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:10px;
-                      padding:0.8rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-            <div style="font-size:0.73rem;font-weight:700;color:#64748b;
-                        text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem">
-              Tổng kết quả
-            </div>
-            <div style="font-size:1.8rem;font-weight:800;color:#1a202c;line-height:1">{len(results)}</div>
-          </div>
-          <div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
-                      padding:0.8rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-            <div style="font-size:0.73rem;font-weight:700;color:#15803d;
-                        text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem">
-              ✅ Nhóm Điều Trị
-            </div>
-            <div style="font-size:1.8rem;font-weight:800;color:#15803d;line-height:1">{known_count}</div>
-          </div>
-          <div style="flex:1;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;
-                      padding:0.8rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-            <div style="font-size:0.73rem;font-weight:700;color:#c2410c;
-                        text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem">
-              ⚠️ Nguy Cơ / Cần Kiểm Chứng
-            </div>
-            <div style="font-size:1.8rem;font-weight:800;color:#c2410c;line-height:1">{pred_count}</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    # Metric row — dùng màu split riêng
+    items = [
+        (len(results), "Tổng kết quả",              "#1a1d27", "#2d3148", "#e8eaf0"),
+        (known_count,  "✅ Nhóm Điều Trị",          "#0d2e1f", "#166534", "#4ade80"),
+        (pred_count,   "⚠️ Nguy Cơ / Cần Kiểm Chứng","#2d1a06","#92400e", "#fbbf24"),
+    ]
+    cols = "".join(
+        f"""<div style="flex:1;background:{bg};border:1px solid {bd};border-radius:10px;
+                  padding:0.75rem 1rem;min-width:0">
+              <div style="font-size:0.7rem;font-weight:700;color:{fg};opacity:0.7;
+                          text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem">{label}</div>
+              <div style="font-size:1.7rem;font-weight:800;color:{fg};line-height:1">{val}</div>
+            </div>"""
+        for val, label, bg, bd, fg in items
     )
+    st.markdown(f'<div style="display:flex;gap:0.75rem;margin-bottom:1rem">{cols}</div>', unsafe_allow_html=True)
 
-    # ── 2 cột song song ────────────────────────────────────────────────
     col1, col2 = st.columns(2)
-
     with col1:
-        st.markdown('<h3 style="color:#166534;margin:0 0 0.2rem 0">✅ Nhóm Thuốc Điều Trị</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#4ade80;margin:0 0 0.2rem 0;font-size:1rem">✅ Nhóm Thuốc Điều Trị</h3>', unsafe_allow_html=True)
         st.caption(f"{known_count} liên kết đã được xác nhận trong dữ liệu huấn luyện")
         _render_group_table(df_tri_benh, entity_label)
 
     with col2:
-        st.markdown('<h3 style="color:#9a3412;margin:0 0 0.2rem 0">⚠️ Nhóm Nguy Cơ / Tác Dụng Phụ</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#fbbf24;margin:0 0 0.2rem 0;font-size:1rem">⚠️ Nhóm Nguy Cơ / Tác Dụng Phụ</h3>', unsafe_allow_html=True)
         st.caption(f"{pred_count} kết quả do AI dự đoán — cần kiểm chứng lâm sàng")
         _render_group_table(df_canh_bao, entity_label)
 
-    # ── Chú thích cuối ─────────────────────────────────────────────────
     st.markdown(
         '<div class="info-box" style="margin-top:0.8rem">'
         '<strong>Hướng dẫn đọc kết quả:</strong> '
-        '✅ <strong>Nhóm Điều Trị</strong> — liên kết có trong dataset, đã được xác nhận qua nghiên cứu. '
+        '✅ <strong>Nhóm Điều Trị</strong> — liên kết có trong dataset, đã xác nhận qua nghiên cứu. '
         '⚠️ <strong>Nhóm Nguy Cơ</strong> — AI suy luận từ cấu trúc đồ thị, '
-        '<em>không phải khuyến cáo y tế</em>, chỉ dùng để nghiên cứu thêm.'
-        '</div>',
+        '<em>không phải khuyến cáo y tế</em>, chỉ dùng để nghiên cứu.</div>',
         unsafe_allow_html=True,
     )
 
 
 def show_history_table(rows: list[dict]) -> None:
     if not rows:
-        st.markdown(
-            '<div class="info-box">Chưa có lịch sử tra cứu.</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="info-box">Chưa có lịch sử tra cứu.</div>', unsafe_allow_html=True)
         return
     df = pd.DataFrame(rows)
     if "score" in df.columns:
@@ -265,26 +165,20 @@ def show_history_table(rows: list[dict]) -> None:
 
 def show_metric_row(stats: dict) -> None:
     items = [
-        ("total_users",       "👤 Users",       "#f0fdf4", "#4ade80", "#14532d"),
-        ("total_drugs",       "💊 Thuốc",        "#dbeafe", "#60a5fa", "#1e3a8a"),
-        ("total_diseases",    "🦠 Bệnh",         "#fef9c3", "#fbbf24", "#713f12"),
-        ("total_links",       "🔗 Liên kết",     "#fae8ff", "#c084fc", "#581c87"),
-        ("total_predictions", "🔬 Predictions",  "#ffedd5", "#fb923c", "#7c2d12"),
+        ("total_users",       "👤 Users",        "#0d2e1f", "#166534", "#4ade80"),
+        ("total_drugs",       "💊 Thuốc",         "#172040", "#1e40af", "#93c5fd"),
+        ("total_diseases",    "🦠 Bệnh",          "#2d1e06", "#92500e", "#fbbf24"),
+        ("total_links",       "🔗 Liên kết",      "#1e1040", "#5b21b6", "#c084fc"),
+        ("total_predictions", "🔬 Predictions",   "#2d1206", "#991b1b", "#fca5a5"),
     ]
-    cols_html = ""
-    for key, label, bg, border, fg in items:
-        val = int(stats.get(key, 0))
-        cols_html += f"""
-        <div style="flex:1;background:{bg};border:1px solid {border};border-radius:10px;
-                    padding:0.8rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,0.06);min-width:0">
-          <div style="font-size:0.73rem;font-weight:700;color:{fg};
-                      text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;
-                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            {label}
-          </div>
-          <div style="font-size:1.8rem;font-weight:800;color:{fg};line-height:1">{val}</div>
-        </div>"""
-    st.markdown(
-        f'<div style="display:flex;gap:0.8rem;margin-bottom:0.5rem">{cols_html}</div>',
-        unsafe_allow_html=True,
+    cols_html = "".join(
+        f"""<div style="flex:1;background:{bg};border:1px solid {bd};border-radius:10px;
+                  padding:0.75rem 1rem;min-width:0">
+              <div style="font-size:0.7rem;font-weight:700;color:{fg};opacity:0.7;
+                          text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{label}</div>
+              <div style="font-size:1.7rem;font-weight:800;color:{fg};line-height:1">{int(stats.get(key, 0))}</div>
+            </div>"""
+        for key, label, bg, bd, fg in items
     )
+    st.markdown(f'<div style="display:flex;gap:0.75rem;margin-bottom:0.5rem">{cols_html}</div>', unsafe_allow_html=True)

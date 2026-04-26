@@ -8,7 +8,6 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-# Also ensure project root is on path for cross-package imports
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -29,11 +28,15 @@ def main() -> None:
     with st.sidebar:
         st.markdown(
             """
-            <div style="padding:0.5rem 0 0.3rem 0">
-              <div style="font-size:1.3rem;font-weight:800;color:#0d9488">💊 MedLink AI</div>
-              <div style="font-size:0.75rem;color:#64748b;margin-top:0.1rem">Drug · Disease Intelligence</div>
+            <div style="padding:0.6rem 0 0.4rem 0">
+              <div style="font-size:1.25rem;font-weight:800;color:#0d9488;letter-spacing:-0.02em">
+                💊 MedLink AI
+              </div>
+              <div style="font-size:0.72rem;color:#7c829e;margin-top:0.15rem;letter-spacing:0.03em">
+                Drug · Disease Intelligence
+              </div>
             </div>
-            <hr style="border:none;border-top:1px solid #e2e8f0;margin:0.7rem 0">
+            <hr style="border:none;border-top:1px solid #2d3148;margin:0.7rem 0">
             """,
             unsafe_allow_html=True,
         )
@@ -54,7 +57,10 @@ def main() -> None:
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"❌ Offline: {exc}")
 
-        st.markdown("<hr style='border:none;border-top:1px solid #e2e8f0;margin:0.7rem 0'>", unsafe_allow_html=True)
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid #2d3148;margin:0.7rem 0'>",
+            unsafe_allow_html=True,
+        )
 
         if is_authenticated():
             username = str(st.session_state.get("username", ""))
@@ -62,10 +68,10 @@ def main() -> None:
             role_icon = "👑" if role == "admin" else "👤"
             st.markdown(
                 f"""
-                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+                <div style="background:#0d2e1f;border:1px solid #166534;border-radius:8px;
                             padding:0.6rem 0.8rem;margin-bottom:0.8rem">
-                  <div style="font-weight:700;color:#15803d">{role_icon} {username}</div>
-                  <div style="font-size:0.76rem;color:#64748b;text-transform:capitalize">{role}</div>
+                  <div style="font-weight:700;color:#4ade80;font-size:0.95rem">{role_icon} {username}</div>
+                  <div style="font-size:0.73rem;color:#7c829e;text-transform:capitalize;margin-top:0.1rem">{role}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -88,8 +94,8 @@ def main() -> None:
 
         st.markdown(
             """
-            <hr style="border:none;border-top:1px solid #e2e8f0;margin:0.7rem 0">
-            <div style="font-size:0.73rem;color:#94a3b8;text-align:center">
+            <hr style="border:none;border-top:1px solid #2d3148;margin:0.7rem 0">
+            <div style="font-size:0.7rem;color:#7c829e;text-align:center;line-height:1.6">
               MedLink AI v1.0 · FuzzyGCN<br>Drug–Disease Link Prediction
             </div>
             """,
@@ -121,4 +127,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
